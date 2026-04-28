@@ -27,6 +27,10 @@ try {
 
 //mount swaggerui endpoint
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 //API Routes
 app.use('/api/goals', goalRoutes);
 app.use('/api/auth', authRoutes);
