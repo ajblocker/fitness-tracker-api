@@ -1,0 +1,1608 @@
+openapi: 3.0.3
+
+info:
+  title: Fitness Tracker API
+  version: 1.0.0
+  description: API documentation for Fitness Tracker application
+
+servers:
+  - url: http://localhost:3000/api
+
+tags:
+  - name: Auth
+    description: User authentication - signup and login (open to everyone)
+  - name: Workout Sessions
+    description: Logged workout sessions owned by the authenticated user
+  - name: Exercises
+    description: Exercise library entries owned by their creator
+  - name: Goals
+    description: Personal fitness goals owned by the authenticated user
+  - name: Workouts
+    description: Records linking a workout session to an exercise with sets/reps/weight data
+
+paths:
+  # Authentication Endpoints
+  /auth/signup:
+    post:
+      tags: [Auth]
+      summary: Create a new user account
+      description: >
+        Registers a new user. The password is hashed with bcrypt before storage.
+        Access control: open to all – no JWT required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignUpRequest'
+            example:
+              name: Alex Moore
+              email: alex@example.com
+              password: Password123!
+              role: USER
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignUpResponse'
+              example:
+                id: 1
+                name: Alex Moore
+                email: alex@example.com
+                role: USER
+                createdAt: '2026-03-30T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/InvalidUserInput'
+        '409':
+          description: Email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Email has already been used
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Log in and receive a JWT
+      description: >
+        Authenticates an existing user and returns a signed JWT access token.
+        Rate limited to 3 requests
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: alex@example.com
+              password: Password123!
+      responses:
+        '200':
+          description: Login successful – JWT returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        '400':
+          $ref: '#/components/responses/InvalidUserInput'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Invalid credentials
+        '429':
+          description: Too many login attempts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Too many login requests. Try again later.
+
+  # Workout Sessions Endpoints
+  /workout-session:
+    get:
+      tags: [Workout Sessions]
+      summary: Get all workout sessions
+      description: >
+        Returns a list of workout sessions
+        If authenticated, returns only sessions belonging to the current user
+        If unauthenticated, returns all sessions (public read)
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/sortBy'
+        - $ref: '#/components/parameters/order'
+        - $ref: '#/components/parameters/offset'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of workout sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkoutSession'
+              example:
+                - id: 12
+                  userId: 1
+                  title: Full Body A
+                  notes: Body was aching today
+                  workoutDate: '2026-03-24'
+                  durationMinutes: 90
+                  createdAt: '2026-03-24T10:00:00.000Z'
+
+    post:
+      tags: [Workout Sessions]
+      summary: Create a new workout session
+      description: >
+        Creates a new workout session associated with the authenticated user.
+        Access: only authenticated users can create sessions.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutSessionInput'
+            example:
+              title: Full Body A
+              notes: Body was aching today
+              workoutDate: '2026-03-24'
+              durationMinutes: 90
+      responses:
+        '201':
+          description: Workout session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSession'
+              example:
+                id: 12
+                userId: 1
+                title: Full Body A
+                notes: Body was aching today
+                workoutDate: '2026-03-24'
+                durationMinutes: 90
+                createdAt: '2026-03-24T10:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/WorkoutSessionValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workout-session/{id}:
+    get:
+      tags: [Workout Sessions]
+      summary: Get a workout session by ID
+      description: >
+        Returns a single workout session by ID
+        Access: only the owner of the workout session can access it
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Workout session found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSession'
+              example:
+                id: 12
+                userId: 1
+                title: Full Body A
+                notes: Body was aching today
+                workoutDate: '2026-03-24'
+                durationMinutes: 90
+                createdAt: '2026-03-24T10:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/WorkoutSessionValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Workout Sessions]
+      summary: Update a workout session by ID
+      description: >
+        Updates title, date, duration, or notes (optional) by ID
+        Access: only the owner of the workout session
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutSessionUpdateInput'
+            example:
+              title: Full Body A (Updated)
+              notes: Left early due to fatigue
+              workoutDate: '2026-03-24'
+              durationMinutes: 70
+      responses:
+        '200':
+          description: Workout session updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSession'
+              example:
+                id: 12
+                userId: 1
+                title: Full Body A (Updated)
+                notes: Left early due to fatigue
+                workoutDate: '2026-03-24'
+                durationMinutes: 70
+                createdAt: '2026-03-24T10:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/WorkoutSessionValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Workout Sessions]
+      summary: Delete a workout session by ID
+      description: >
+        Deletes a workout session and all associated workout records by ID
+        Access: only the owner of the workout session
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '204':
+          description: Workout session deleted successfully
+        '400':
+          $ref: '#/components/responses/WorkoutSessionValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Exercises Endpoints
+  /exercises:
+    get:
+      tags: [Exercises]
+      summary: Get all exercises
+      description: >
+        Returns a list of exercises in the exercise library
+        If authenticated, returns only exercises owned by the current user
+        If unauthenticated, returns the full public library
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/sortBy'
+        - $ref: '#/components/parameters/order'
+        - $ref: '#/components/parameters/offset'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of exercises
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Exercise'
+              example:
+                - id: 5
+                  userId: 1
+                  name: Deadlift
+                  category: Strength
+                  muscleGroup: Posterior Chain
+                  equipment: Barbell
+                  description: Hip hinge movement targeting the posterior chain.
+                  createdAt: '2026-03-31T00:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Exercises]
+      summary: Create a new exercise
+      description: >
+        Creates a new exercise owned by the authenticated user
+        Access: only authenticated users can create exercises for their personal library
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExerciseInput'
+            example:
+              name: Deadlift
+              category: Strength
+              muscleGroup: Posterior Chain
+              equipment: Barbell
+              description: Hip hinge movement targeting the posterior chain.
+      responses:
+        '201':
+          description: Exercise created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+              example:
+                id: 5
+                userId: 1
+                name: Deadlift
+                category: Strength
+                muscleGroup: Posterior Chain
+                equipment: Barbell
+                description: Hip hinge movement targeting the posterior chain.
+                createdAt: '2026-03-31T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ExerciseValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /exercises/{id}:
+    get:
+      tags: [Exercises]
+      summary: Get an exercise by ID
+      description: >
+        Returns a single exercise by ID
+        Access: only the owner of the exercise or an admin user can access it
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Exercise found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+              example:
+                id: 5
+                userId: 1
+                name: Deadlift
+                category: Strength
+                muscleGroup: Posterior Chain
+                equipment: Barbell
+                description: Hip hinge movement targeting the posterior chain.
+                createdAt: '2026-03-31T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/WorkoutSessionValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Exercises]
+      summary: Update an exercise by ID
+      description: >
+        Updates name, description, category, muscle group, or equipment by ID
+        Access: only the owner of the exercise or an admin user can update it
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExerciseUpdateInput'
+            example:
+              equipment: Barbell or Trap Bar
+              description: Updated description of the deadlift.
+      responses:
+        '200':
+          description: Exercise updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+              example:
+                id: 5
+                userId: 1
+                name: Deadlift
+                category: Strength
+                muscleGroup: Posterior Chain
+                equipment: Barbell or Trap Bar
+                description: Updated description of the deadlift.
+                createdAt: '2026-03-31T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ExerciseValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Exercise is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Exercise has already been registered
+
+    delete:
+      tags: [Exercises]
+      summary: Delete an exercise by ID
+      description: >
+        Deletes an exercise by ID
+        Access: owner of the exercise OR admin user can delete it
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Exercise deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Exercise'
+              example:
+                id: 5
+                userId: 1
+                name: Deadlift
+                category: Strength
+                muscleGroup: Posterior Chain
+                equipment: Barbell
+                description: Hip hinge movement targeting the posterior chain.
+                createdAt: '2026-03-31T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/ExerciseValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Exercise is still referenced by existing workouts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Exercise is still referenced by existing workouts
+
+  # Goals Endpoints
+  /goals:
+    get:
+      tags: [Goals]
+      summary: Get all goals
+      description: >
+        Returns a list of goals 
+        If authenticated, returns only goals belonging to the current user
+        If unauthenticated, returns all goals
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/sortBy'
+        - $ref: '#/components/parameters/order'
+        - $ref: '#/components/parameters/offset'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of goals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Goal'
+              example:
+                - id: 8
+                  userId: 1
+                  title: Bench Press 215lbs
+                  goalType: Strength
+                  targetValue: 215
+                  unit: lbs
+                  deadline: '2026-07-15'
+                  status: ACTIVE
+                  createdAt: '2026-03-31T00:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Goals]
+      summary: Create a new fitness goal
+      description: >
+        Creates a new goal associated with the authenticated user.
+        Access: only authenticated users can create goals for themselves
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalInput'
+            example:
+              title: Bench Press 215lbs
+              goalType: Strength
+              targetValue: 215
+              unit: lbs
+              deadline: '2026-07-15'
+      responses:
+        '201':
+          description: Goal created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+              example:
+                id: 8
+                userId: 1
+                title: Bench Press 215lbs
+                goalType: Strength
+                targetValue: 215
+                unit: lbs
+                deadline: '2026-07-15'
+                status: ACTIVE
+                createdAt: '2026-03-31T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/GoalValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /goals/{id}:
+    get:
+      tags: [Goals]
+      summary: Get a goal by ID
+      description: >
+        Returns a single goal by ID
+        Access: only the owner of the goal can access it
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Goal found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+              example:
+                id: 8
+                userId: 1
+                title: Bench Press 215lbs
+                goalType: Strength
+                targetValue: 215
+                unit: lbs
+                deadline: '2026-07-15'
+                status: ACTIVE
+                createdAt: '2026-03-31T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/GoalValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Goals]
+      summary: Update a goal by ID
+      description: >
+        Updates a goal's title, target value, deadline, or status by ID
+        Access: only the owner of the goal can update it.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalUpdateInput'
+            example:
+              title: Bench Press 225lbs
+              targetValue: 225
+              deadline: '2026-09-01'
+              status: ACTIVE
+      responses:
+        '200':
+          description: Goal updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+              example:
+                id: 8
+                userId: 1
+                title: Bench Press 225lbs
+                goalType: Strength
+                targetValue: 225
+                unit: lbs
+                deadline: '2026-09-01'
+                status: ACTIVE
+                createdAt: '2026-03-31T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/GoalValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Goal is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Goal has already been registered
+
+    delete:
+      tags: [Goals]
+      summary: Delete a goal by ID
+      description: >
+        Deletes a goal by ID
+        Access: only the owner of the goal can delete it
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Goal deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+              example:
+                id: 8
+                userId: 1
+                title: Bench Press 215lbs
+                goalType: Strength
+                targetValue: 215
+                unit: lbs
+                deadline: '2026-07-15'
+                status: ACTIVE
+                createdAt: '2026-03-31T00:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/GoalValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # Workouts Endpoints (exercises inside a session)
+  /workouts:
+    get:
+      tags: [Workouts]
+      summary: Get all workout entries
+      description: >
+        Returns a list of workout entries (exercise-session links)
+        If authenticated, filters to the current user's sessions
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - name: workoutId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by workout session ID
+        - name: exerciseId
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Filter by exercise ID
+        - $ref: '#/components/parameters/search'
+        - $ref: '#/components/parameters/sortBy'
+        - $ref: '#/components/parameters/order'
+        - $ref: '#/components/parameters/offset'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of workout entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Workout'
+              example:
+                - id: 3
+                  workoutId: 12
+                  exerciseId: 5
+                  sets: 3
+                  reps: 6
+                  weight: 215
+                  durationSeconds: 180
+                  notes: Felt strong today
+
+    post:
+      tags: [Workouts]
+      summary: Add an exercise entry to a workout session
+      description: >
+        Creates a new workout entry linking an exercise to a workout session
+        Access: only authenticated users
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutInput'
+            example:
+              workoutId: 12
+              exerciseId: 5
+              sets: 3
+              reps: 6
+              weight: 215
+              durationSeconds: 180
+              notes: Felt strong today
+      responses:
+        '201':
+          description: Workout entry created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+              example:
+                id: 3
+                workoutId: 12
+                exerciseId: 5
+                sets: 3
+                reps: 6
+                weight: 215
+                durationSeconds: 180
+                notes: Felt strong today
+        '400':
+          $ref: '#/components/responses/WorkoutValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /workouts/{id}:
+    get:
+      tags: [Workouts]
+      summary: Get a workout entry by ID
+      description: >
+        Returns a single workout entry by ID
+        Access: only the owner of the original workout session
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Workout entry found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+              example:
+                id: 3
+                workoutId: 12
+                exerciseId: 5
+                sets: 3
+                reps: 6
+                weight: 215
+                durationSeconds: 180
+                notes: Felt strong today
+        '400':
+          $ref: '#/components/responses/WorkoutValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Workouts]
+      summary: Update a workout entry by ID
+      description: >
+        Updates sets, reps, weight, duration, or notes of a workout entry by ID
+        Access: only the owner of the original workout session
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkoutUpdateInput'
+            example:
+              sets: 4
+              reps: 8
+              weight: 225
+              durationSeconds: 200
+      responses:
+        '200':
+          description: Workout entry updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+              example:
+                id: 3
+                workoutId: 12
+                exerciseId: 5
+                sets: 4
+                reps: 8
+                weight: 225
+                durationSeconds: 200
+                notes: Pushed harder this session
+        '400':
+          $ref: '#/components/responses/WorkoutValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Workout session is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Workout session has already been registered
+
+    delete:
+      tags: [Workouts]
+      summary: Delete a workout entry by ID
+      description: >
+        Deletes a single workout entry by ID
+        Access: only the owner of the original workout session
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/resourceId'
+      responses:
+        '200':
+          description: Workout entry deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workout'
+              example:
+                id: 3
+                workoutId: 12
+                exerciseId: 5
+                sets: 3
+                reps: 6
+                weight: 215
+                durationSeconds: 180
+                notes: Felt strong today
+        '400':
+          $ref: '#/components/responses/WorkoutValidationFailed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ─────────────────────────────────────────────────────────────
+# SECURITY SCHEME
+# ─────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Paste the JWT returned by POST /auth/login into the Authorize dialog.
+        Format: `Bearer <token>`
+
+  # ─── REUSABLE SCHEMAS ───────────────────────────────────────
+  schemas:
+    # ── Auth ────────────────────────────────────────────────────
+    SignUpRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          example: Alex Moore
+        email:
+          type: string
+          format: email
+          example: alex@example.com
+        password:
+          type: string
+          minLength: 8
+          maxLength: 64
+          example: Password123!
+        role:
+          type: string
+          enum: [USER, ADMIN]
+          default: USER
+          example: USER
+
+    SignUpResponse:
+      type: object
+      required: [id, name, email, role]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Alex Moore
+        email:
+          type: string
+          example: alex@example.com
+        role:
+          type: string
+          example: USER
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-30T00:00:00.000Z'
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: alex@example.com
+        password:
+          type: string
+          example: Password123!
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    # ── Workout Session ──────────────────────────────────────────
+    WorkoutSessionInput:
+      type: object
+      required: [title, workoutDate, durationMinutes]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Full Body A
+        notes:
+          type: string
+          maxLength: 500
+          example: Body was aching today
+        workoutDate:
+          type: string
+          format: date
+          example: '2026-03-24'
+        durationMinutes:
+          type: integer
+          minimum: 1
+          example: 90
+
+    WorkoutSessionUpdateInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Full Body A (Updated)
+        notes:
+          type: string
+          maxLength: 500
+          example: Left early due to fatigue
+        workoutDate:
+          type: string
+          format: date
+          example: '2026-03-24'
+        durationMinutes:
+          type: integer
+          minimum: 1
+          example: 70
+
+    WorkoutSession:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 12
+        userId:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: Full Body A
+        notes:
+          type: string
+          nullable: true
+          example: Body was aching today
+        workoutDate:
+          type: string
+          example: '2026-03-24'
+        durationMinutes:
+          type: integer
+          example: 90
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-24T10:00:00.000Z'
+
+    # ── Exercise ─────────────────────────────────────────────────
+    ExerciseInput:
+      type: object
+      required: [name, category, muscleGroup, equipment]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Deadlift
+        category:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Strength
+        muscleGroup:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Posterior Chain
+        equipment:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Barbell
+        description:
+          type: string
+          maxLength: 500
+          example: Hip hinge movement that targets the posterior chain.
+
+    ExerciseUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Deadlift
+        category:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Strength
+        muscleGroup:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Posterior Chain
+        equipment:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Barbell or Trap Bar
+        description:
+          type: string
+          maxLength: 500
+          example: Updated description.
+
+    Exercise:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 5
+        userId:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Deadlift
+        category:
+          type: string
+          example: Strength
+        muscleGroup:
+          type: string
+          example: Posterior Chain
+        equipment:
+          type: string
+          example: Barbell
+        description:
+          type: string
+          example: Hip hinge movement that targets the posterior chain.
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-31T00:00:00.000Z'
+
+    # ── Goal ─────────────────────────────────────────────────────
+    GoalInput:
+      type: object
+      required: [title, goalType, targetValue, unit, deadline]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Bench Press 215lbs
+        goalType:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Strength
+        targetValue:
+          type: integer
+          minimum: 0
+          example: 215
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: lbs
+        deadline:
+          type: string
+          format: date
+          example: '2026-07-15'
+        status:
+          type: string
+          enum: [ACTIVE, ACHIEVED, ABANDONED]
+          default: ACTIVE
+
+    GoalUpdateInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: Bench Press 215lbs
+        goalType:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Strength
+        targetValue:
+          type: integer
+          minimum: 0
+          example: 215
+        unit:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: lbs
+        deadline:
+          type: string
+          format: date
+          example: '2026-07-15'
+        status:
+          type: string
+          enum: [ACTIVE, ACHIEVED, ABANDONED]
+          example: ACHIEVED
+
+    Goal:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 8
+        userId:
+          type: integer
+          example: 1
+        title:
+          type: string
+          example: Bench Press 215lbs
+        goalType:
+          type: string
+          example: Strength
+        targetValue:
+          type: integer
+          example: 215
+        unit:
+          type: string
+          example: lbs
+        deadline:
+          type: string
+          example: '2026-07-15'
+        status:
+          type: string
+          example: ACTIVE
+        createdAt:
+          type: string
+          format: date-time
+          example: '2026-03-31T00:00:00.000Z'
+
+    # ── Workout (junction) ───────────────────────────────────────
+    WorkoutInput:
+      type: object
+      required: [workoutId, exerciseId, sets, reps, weight, durationSeconds]
+      properties:
+        workoutId:
+          type: integer
+          minimum: 1
+          description: ID of the parent WorkoutSession
+          example: 12
+        exerciseId:
+          type: integer
+          minimum: 1
+          example: 5
+        sets:
+          type: integer
+          minimum: 1
+          example: 3
+        reps:
+          type: integer
+          minimum: 1
+          example: 6
+        weight:
+          type: integer
+          minimum: 0
+          example: 215
+        durationSeconds:
+          type: integer
+          minimum: 0
+          example: 180
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+          example: Felt strong today
+
+    WorkoutUpdateInput:
+      type: object
+      properties:
+        workoutId:
+          type: integer
+          minimum: 1
+          example: 12
+        exerciseId:
+          type: integer
+          minimum: 1
+          example: 5
+        sets:
+          type: integer
+          minimum: 1
+          example: 4
+        reps:
+          type: integer
+          minimum: 1
+          example: 8
+        weight:
+          type: integer
+          minimum: 0
+          example: 225
+        durationSeconds:
+          type: integer
+          minimum: 0
+          example: 200
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+          example: Pushed harder this session
+
+    Workout:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 3
+        workoutId:
+          type: integer
+          example: 12
+        exerciseId:
+          type: integer
+          example: 5
+        sets:
+          type: integer
+          example: 3
+        reps:
+          type: integer
+          example: 6
+        weight:
+          type: integer
+          example: 215
+        durationSeconds:
+          type: integer
+          example: 180
+        notes:
+          type: string
+          nullable: true
+          example: Felt strong today
+
+    # ── Shared error schemas ─────────────────────────────────────
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Resource not found
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: string
+          example:
+            - 'Title is required'
+            - 'Deadline must be a valid date'
+
+    ExerciseValidationError:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: string
+            enum:
+              - 'Exercise name is required'
+              - 'Exercise name must be between 1 and 255 characters'
+              - 'Category is required'
+              - 'Category must be between 1 and 100 characters'
+              - 'Muscle group is required'
+              - 'Muscle group must be between 1 and 100 characters'
+              - 'Equipment is required'
+              - 'Equipment must be between 1 and 100 characters'
+              - 'Description must not exceed 500 characters'
+              - 'Exercise ID must be a positive integer'
+      example:
+        errors:
+          - 'Exercise name must be between 1 and 255 characters'
+          - 'Equipment must be between 1 and 100 characters'
+
+    GoalValidationError:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: string
+            enum:
+              - 'Goal title is required'
+              - 'Goal title must be between 1 and 255 characters'
+              - 'Goal type is required'
+              - 'Goal type must be between 1 and 100 characters'
+              - 'Target value is required'
+              - 'Target value must be a non-negative integer'
+              - 'Unit is required'
+              - 'Unit must be between 1 and 50 characters'
+              - 'Deadline is required'
+              - 'Deadline must be a valid date'
+              - 'Status must be ACTIVE, ACHIEVED, or ABANDONED'
+              - 'Goal ID must be a positive integer'
+      example:
+        errors:
+          - 'Target value must be a non-negative integer'
+          - 'Deadline must be a valid date'
+
+    WorkoutSessionValidationError:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: string
+            enum:
+              - 'Workout session title is required'
+              - 'Title must be between 1 and 255 characters'
+              - 'Notes must not exceed 500 characters'
+              - 'Workout date is required'
+              - 'Workout date must be a valid date'
+              - 'Duration (in minutes) is required'
+              - 'Duration must be a positive integer'
+              - 'Workout session ID must be a positive integer'
+      example:
+        errors:
+          - 'Duration must be a positive integer'
+          - 'Workout date must be a valid date'
+
+    WorkoutValidationError:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: string
+            enum:
+              - 'Workout session ID is required'
+              - 'Workout session ID must be a positive integer'
+              - 'Exercise ID is required'
+              - 'Exercise ID must be a positive integer'
+              - 'Sets is required'
+              - 'Sets must be a positive integer'
+              - 'Reps is required'
+              - 'Reps must be a positive integer'
+              - 'Weight is required'
+              - 'Weight must be a non-negative integer'
+              - 'Duration (in seconds) is required'
+              - 'Duration must be a non-negative integer'
+              - 'Notes must not exceed 500 characters'
+              - 'Workout ID must be a positive integer'
+      example:
+        errors:
+          - 'Sets must be a positive integer'
+          - 'Weight must be a non-negative integer'
+
+  # ─── REUSABLE RESPONSES ─────────────────────────────────────
+  responses:
+    Unauthorized:
+      description: Not authenticated – missing or invalid JWT
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Not authenticated. Please provide a valid token.
+
+    Forbidden:
+      description: Authenticated but not authorized (not the owner / not admin)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Forbidden – insufficient permission.
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: Resource not found
+
+    BadRequest:
+      description: Validation failed – invalid or missing fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidationErrorResponse'
+
+    InvalidUserInput:
+      description: bad request due to invalid data
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              errors:
+                type: array
+                items:
+                  type: string
+            example:
+              errors:
+                - 'Email is required'
+                - 'Password is required'
+
+    ExerciseValidationFailed:
+      description: Exercise validation failed – invalid or missing fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ExerciseValidationError'
+
+    GoalValidationFailed:
+      description: Goal validation failed – invalid or missing fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/GoalValidationError'
+
+    WorkoutSessionValidationFailed:
+      description: Workout session validation failed – invalid or missing fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WorkoutSessionValidationError'
+
+    WorkoutValidationFailed:
+      description: Workout validation failed – invalid or missing fields
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/WorkoutValidationError'
+
+  # ─── REUSABLE PARAMETERS ────────────────────────────────────
+  parameters:
+    resourceId:
+      name: id
+      in: path
+      required: true
+      description: Positive integer ID of the resource
+      schema:
+        type: integer
+        minimum: 1
+        example: 1
+
+    search:
+      name: search
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Full-text search across text fields
+
+    sortBy:
+      name: sortBy
+      in: query
+      required: false
+      schema:
+        type: string
+        default: id
+      description: Field to sort results by
+
+    order:
+      name: order
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: asc
+
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
+      description: Number of records to skip (pagination)
+
+    limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        default: 10
+        minimum: 1
+      description: Maximum number of records to return

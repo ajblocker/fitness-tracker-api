@@ -1,0 +1,141 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User model with a one-to-many relationship with the Goal, Exercise, and WorkoutSession models. 
+// each user can have multiple goals, exercises, and workout sessions
+model User {
+  id Int @id @default(autoincrement())
+  name String
+  email String @unique
+  passwordHash String @map("password_hash")
+  role Role @default(USER)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  //relations to link users to their corresponding goals, exercises, and workout sessions
+  goals Goal[] 
+  exercises Exercise[]
+  workout_sessions WorkoutSession[]
+
+
+  @@map("users")
+}
+
+// Goal model with a many-to-one relationship with the User model
+// each goal belongs to one user, but a user can have multiple goals
+model Goal {
+  id Int @id @default(autoincrement())
+  userId Int @map("user_id")
+  title String
+  goalType String @map("goal_type")
+  targetValue Int @map("target_value")
+  unit String
+  deadline String
+  status GoalStatus @default(ACTIVE)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  //relations to link goals to their corresponding users
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("goals")
+}
+
+// Exercise model with a many-to-one relationship with the User model 
+// many-to-many relationship with the WorkoutSession model through the Workout model
+// each exercise belongs to one user, but a user can have multiple exercises
+// each exercise can be part of multiple workout sessions, and each workout session can include multiple exercises
+model Exercise {
+  //primary key, automatically generate unique id
+  id Int @id @default(autoincrement())
+  userId Int @map("user_id")
+  name String
+  category String
+  muscleGroup String @map("muscle_group")
+  equipment String
+  description String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  //relations to link exercises to their corresponding users and workout sessions
+  user User @relation(fields: [userId], references: [id])
+  workouts Workout[]
+
+  //indexes to optimize queries filtering by userId, category, and muscleGroup
+  @@index([userId]) 
+  @@index([category])
+  @@index([muscleGroup]) 
+  @@map("exercises")
+}
+
+// WorkoutSession model with a many-to-one relationship with the User model
+// many-to-many relationship with the Exercise model through the Workout model
+// each workout session belongs to one user, but a user can have multiple workout sessions  
+// each workout session can include multiple exercises, and each exercise can be part of multiple workout sessions
+model WorkoutSession {
+  id Int @id @default(autoincrement())
+  userId Int @map("user_id")
+  title String
+  notes String?
+  workoutDate String @map("workout_date")
+  durationMinutes Int @map("duration_minutes")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  //relations to link workout sessions to their corresponding users and exercises
+  user User @relation(fields: [userId], references: [id])
+  workouts Workout[] 
+
+  //indexes to optimize queries filtering by userId and workoutDate 
+  @@index([userId])
+  @@index([workoutDate])
+  @@map("workout_sessions")
+}
+
+// Workout model with a many-to-one relationship with the WorkoutSession and Exercise models
+// each workout belongs to one workout session and one exercise, but a workout session can have 
+// multiple workouts and an exercise can be part of multiple workouts
+model Workout {
+  id Int @id @default(autoincrement())
+  workoutId Int @map("workout_id")
+  exerciseId Int @map("exercise_id")
+  sets Int
+  reps Int
+  weight Int
+  durationSeconds Int @map("duration_seconds")
+  notes String?
+
+  //relations to link workouts to their corresponding workout sessions and exercises
+  workoutSessions WorkoutSession @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exercises Exercise @relation(fields: [exerciseId], references: [id])
+
+  //indexes to optimize queries filtering by workoutId and exerciseId
+  @@index([workoutId])
+  @@index([exerciseId])
+  @@map("workouts")
+}
+
+// Enums for user roles to differentiate between regular users and admins, 
+// used for access control and permissions
+enum Role {
+  USER 
+  ADMIN 
+}
+
+// Enums for goal status to track the progress of user goals, 
+// allowing users to mark goals as active, achieved, or abandoned
+enum GoalStatus {
+  ACTIVE
+  ACHIEVED
+  ABANDONED
+}
