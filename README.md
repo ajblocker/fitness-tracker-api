@@ -1,3 +1,3 @@
-# Final Project Template
+# Fitness Tracker API
 
-This repository provides the **folder structure** for your team’s final project. All implementation is left to students.
+Implemented a fitness tracker API using NodeJS, ExpressJS, Postgres, JWT, and Prisma with SwaggerUI documentation
